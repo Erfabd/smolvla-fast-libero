@@ -1,13 +1,12 @@
-# A fast SmolVLA on a T4, and what my phone video taught me about distilling it
+# Making SmolVLA fast on a T4, and what I learned from my phone videos
 
 SmolVLA (`HuggingFaceVLA/smolvla_libero`) on LIBERO-Spatial, Franka Panda arm, one Colab T4.
 
-- **Speed, no training:** model time per control step from **842 ms to 17 ms**, with no loss of success visible over
-  40 episodes (75% vs 70% for the 10-step reference).
-- **My data:** I recorded 20 manipulation tasks with my phone and used them, without action labels, to distil the
-  10-step action sampler into a 1-step student. The student got closer to the teacher offline and **worse in
-  simulation**. A control run on simulator frames and one extra measurement show why: one denoising step already
-  returns a stable average action, and distillation replaced it with a noisy imitation of the teacher's samples.
+I wanted to see how fast SmolVLA could run on a T4 without retraining it, and whether I could make it even faster with 1-step action prediction.
+
+On LIBERO-Spatial, I got the model from 842 ms per call down to about 17 ms per control step by switching to float16, using 1 denoising step, and re-planning every 10 steps. The fast version got 30/40 successes (75%), compared with 28/40 (70%) for the original 10-step setup.
+
+I also tried distilling the model using 20 simple manipulation tasks that I recorded with my phone. The result was worse than the original model. I first thought the problem was the domain gap between my videos and LIBERO, but a control experiment on LIBERO frames gave the same problem. That led me to look more closely at what the 1-step model was actually learning.
 
 | configuration (float16 vision-language model) | model ms per call | model ms per control step | success (40 episodes) | 95% interval |
 |---|---|---|---|---|
@@ -38,13 +37,13 @@ Inside one model call (random inputs, T4):
 | prefix pass (images, text, state) | 76 ms | 69 ms |
 | flow-matching loop, 10 steps | 639 ms | 640 ms |
 
-Three changes, none of which needs training:
+I used three simple changes, without retraining the model:
 
-1. **float16 instead of bfloat16.** The T4 has no fast bfloat16 path. The vision encoder became 8x faster, and the
-   output moved *closer* to full precision (relative error 0.0025 against 0.031).
-2. **1 denoising step instead of 10.** Each step costs about 60 ms.
-3. **Re-plan every 10 control steps instead of every step.** The model predicts 50 actions per call; the checkpoint
-   executes one and throws away 49.
+1. **float16 instead of bfloat16.** The T4 does not have a fast bfloat16 path. This made the vision encoder much faster and also gave a smaller error compared with full precision (0.0025 vs 0.031).
+
+2. **1 denoising step instead of 10.** One step takes about 60 ms.
+
+3. **Re-plan every 10 control steps.** The model predicts 50 actions at a time, but the original setup only executes one of them before running the model again.
 
 ## 2. Using my phone video
 
@@ -54,22 +53,35 @@ and the top view its wrist camera. Instructions are in [`data/tasks.txt`](data/t
 
 ![my frames](media/phone_frames.png)
 
-**Idea.** Phone video has no action labels, which usually makes it hard to use for a policy. Step distillation does
-not need labels: the 10-step model is the teacher, its answer on my frames is the target, and a copy of the action
-expert learns to give that answer in one step from the same starting noise. If it worked, the 1-step model would be
-both fast and as good as the 10-step one.
+### Idea
 
-**Result.** On held-out phone tasks the student's distance to the teacher halved (0.67 to 0.35). In LIBERO it
-dropped from 75% to 37.5%.
+My phone videos don't contain action labels, so I couldn't train the policy directly from them. Instead, I used the original 10-step model as a teacher.
 
-**Control.** I captured the model's inputs during the fast evaluation (593 LIBERO frames with real robot state) and
-trained the same student on them. It also got closer to the teacher (0.49 to 0.28) and also got worse in LIBERO
-(52.5%), even though it was evaluated on the scenes it was trained on. So the method was the main problem, and the
-domain gap of the phone video made it worse.
+For each frame, I ran the teacher and used its output as the target for a 1-step student. The hope was that the student would learn to produce the same action in one step, giving me most of the quality of the original model at a much lower cost.
 
-**Why.** For flow matching, one Euler step from noise returns roughly the mean action for the observation, which
-hardly depends on the noise. Ten steps return a sample, which does. I fed each model the same input with 6
-different starting noises and measured how much the answers differ (0 = identical):
+### Result
+
+The student got closer to the teacher on the offline metric: the distance dropped from 0.67 to 0.35.
+
+But this did not translate to better control. On LIBERO, success dropped from 75% for the fast original model to 37.5% for the phone-video student.
+
+### Control
+
+I wanted to check whether the phone videos were actually the problem. So I captured 593 LIBERO frames during the fast evaluation, including the real robot state, and trained the same student on those frames.
+
+The result was similar: the student got closer to the teacher offline (0.49 → 0.28), but LIBERO success still dropped, this time to 52.5%.
+
+So the main problem seems to be the distillation setup itself. The phone videos add a domain gap on top of that, which makes things even worse.
+
+### Why
+
+I think the main problem is what the 1-step model is being asked to learn.
+
+With flow matching, one Euler step from noise tends to give something close to the mean action for an observation. That output is fairly stable across different starting noises. With 10 steps, the model produces a sample, so the starting noise matters much more.
+
+I tested this by running each model on the same input with 6 different starting noises. The original 1-step model stayed relatively stable, while both students became much more sensitive to the noise.
+
+So the students learned something that looked more like the teacher's noisy samples, instead of the stable average action produced by the original 1-step model.
 
 | model | LIBERO frames | phone frames |
 |---|---|---|
@@ -84,7 +96,7 @@ jitter at the grasp. The teacher is just as noise-dependent and still succeeds, 
 
 The phone frames gave the same diagnosis as the LIBERO frames, in the same order and at similar values.
 
-## What worked and what did not
+## What worked, and what didn't
 
 Worked:
 - Measuring before optimising. The bfloat16 problem only showed up because I timed each stage.
@@ -92,11 +104,11 @@ Worked:
 
 Did not work:
 - Distilling onto my phone video, and distilling at all with this recipe.
-- I filmed forks, bananas and knife on a white table, while every
-  LIBERO-Spatial task is "put the black bowl on the plate" on a wooden table. The phone
-  student trained on scenes it would never see, which probably explains part of why it
-  scored below the student trained on LIBERO frames (37.5% vs 52.5%). Next time I would
-  film the LIBERO task itself: a dark bowl, a white plate, the same camera angles.
+- My phone data was also very different from LIBERO. I filmed forks, bananas and a knife on a white table, while LIBERO uses a dark bowl, a white plate and a wooden table.
+
+So the phone student was learning from scenes that looked nothing like the ones it had to control. That probably explains part of the gap between the phone student (37.5%) and the student trained on LIBERO frames (52.5%).
+
+If I do this again, I'd record the actual LIBERO task with the same objects and camera views.
 - Distance to the teacher as an offline metric. It ranked the students above the original model; LIBERO ranked
   them below.
 - Ten-episode evaluations. They gave 10/10 for the fast setting and 2/10 for the phone student; 40 episodes gave
@@ -104,24 +116,21 @@ Did not work:
 - Several of my own predictions: that the model was 95% of step time (it is 57%), and that the student
   would help when executing 10 actions at once (it got worse).
 
-## Design choices
+## Why I set it up this way
 
-- **SmolVLA on LIBERO-Spatial,** the setting from the challenge, small enough for a T4.
-- **Measure inside the simulator.** `fast_eval.py` times every model call during evaluation, because numbers from
-  an isolated benchmark did not match the ones inside the loop.
-- **Report model time, not wall-clock time.** About 0.5 s per step is LIBERO physics and rendering, which a real
-  robot does not have.
-- **Train only the action expert.** The time is spent there; vision and language stay frozen.
-- **Hold out tasks.** Phone tasks 17 to 20 and LIBERO tasks 8 and 9 are never trained on.
-- **40 episodes and Wilson intervals** for every success rate that is compared.
+- **LIBERO-Spatial:** I used the same setting as the challenge and it fits on a T4.
+- **Timing inside the simulator:** `fast_eval.py` measures every model call during evaluation. The numbers from a separate benchmark did not match what I saw inside the actual loop.
+- **Model time instead of wall-clock time:** About 0.5 s of each LIBERO step comes from physics and rendering, so I don't count that as model time.
+- **Only train the action expert:** That is where the compute goes, so I kept the vision and language parts frozen.
+- **Hold out tasks:** Phone tasks 17–20 and LIBERO tasks 8–9 are never used for training.
+- **40 episodes:** I use 40 episodes and Wilson intervals for the success rates I compare.
 
 ## Limitations
 
-- One task suite (LIBERO-Spatial, which is always "put the bowl on the plate"), one GPU type, 40 episodes per
-  configuration. Differences under about 20 points are within noise.
-- The LIBERO student was evaluated on the initial states it was trained on, which favours it; it still lost.
-- Robot state for the phone frames is set to the dataset mean.
-- Timings vary by about 10% between Colab T4 machines.
+- I only tested LIBERO-Spatial, one GPU type, and 40 episodes per configuration. With this setup, differences smaller than about 20 points are hard to take too seriously.
+- The LIBERO student was evaluated on the same initial states it was trained on, which gives it an advantage. It still performed worse.
+- For phone frames, I used the mean robot state from the dataset.
+- T4 timings vary by about 10% between Colab machines.
 
 ## Run it
 
