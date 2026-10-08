@@ -4,7 +4,7 @@ SmolVLA (`HuggingFaceVLA/smolvla_libero`) on LIBERO-Spatial, Franka Panda arm, o
 
 - **Speed, no training:** model time per control step from **842 ms to 17 ms**, with no loss of success visible over
   40 episodes (75% vs 70% for the 10-step reference).
-- **My data:** I recorded 20 manipulation tasks with a phone and used them, without action labels, to distil the
+- **My data:** I recorded 20 manipulation tasks with my phone and used them, without action labels, to distil the
   10-step action sampler into a 1-step student. The student got closer to the teacher offline and **worse in
   simulation**. A control run on simulator frames and one extra measurement show why: one denoising step already
   returns a stable average action, and distillation replaced it with a noisy imitation of the teacher's samples.
