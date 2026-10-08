@@ -85,6 +85,15 @@ class Distiller:
                 frames.append(torch.from_numpy(idx))
         return {"noise": torch.cat(noises), "target": torch.cat(targets), "frame": torch.cat(frames)}
 
+    @staticmethod
+    def average_targets(t):
+        """Same rows as `t`, but every target replaced by the mean of the teacher's answers for that frame."""
+        target = t["target"].clone()
+        for f in t["frame"].unique():
+            rows = t["frame"] == f
+            target[rows] = t["target"][rows].mean(0)
+        return dict(t, target=target)
+
     @torch.no_grad()
     def distance_to_teacher(self, ds, t, rows, steps):
         """Relative error to the teacher over the 7 executed action dimensions (0 = identical)."""

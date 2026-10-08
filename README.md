@@ -8,12 +8,16 @@ On LIBERO-Spatial, I got the model from 842 ms per call down to about 17 ms per 
 
 I also tried distilling the model using 20 simple manipulation tasks that I recorded with my phone. The result was worse than the original model. I first thought the problem was the domain gap between my videos and LIBERO, but a control experiment on LIBERO frames gave the same problem. That led me to look more closely at what the 1-step model was actually learning.
 
+That look pointed at the training target, so I changed it: instead of one teacher sample, the student learns the teacher's average answer. With that change my phone video did as well as LIBERO's own frames (55% each, up from 37.5% for the phone student). But every student I distilled was still below the original 1-step model.
+
 | configuration (float16 vision-language model) | model ms per call | model ms per control step | success (40 episodes) | 95% interval |
 |---|---|---|---|---|
 | 10 denoising steps, re-plan every step | 586 | 586 | 28/40 (70%) | 55 to 82% |
 | **1 step, re-plan every 10 steps** | 172 | **17** | **30/40 (75%)** | 60 to 86% |
-| student distilled on LIBERO frames | 174 | 17 | 21/40 (52.5%) | 37 to 67% |
-| student distilled on my phone video | 173 | 17 | 15/40 (37.5%) | 24 to 53% |
+| student on LIBERO frames, single-sample target | 174 | 17 | 21/40 (52.5%) | 37 to 67% |
+| student on my phone video, single-sample target | 173 | 17 | 15/40 (37.5%) | 24 to 53% |
+| student on LIBERO frames, average target | 171 | 17 | 22/40 (55%) | 40 to 69% |
+| student on my phone video, average target | 172 | 17 | 22/40 (55%) | 40 to 69% |
 
 The checkpoint as shipped (bfloat16, 10 steps, re-plan every step) takes 842 ms per call on the same GPU.
 Times are medians measured inside the LIBERO runs, which happened on different Colab machines. Re-measured in a
@@ -22,7 +26,7 @@ single session on random inputs: 854 ms as shipped, 704 ms in float16 with 10 st
 
 ![speed against success](results/speed_vs_success.png)
 
-| 1 step, re-plan every 10 steps | 10 steps, re-plan every step | student distilled on my phone video |
+| 1 step, re-plan every 10 steps | 10 steps, re-plan every step | phone student, single-sample target |
 |---|---|---|
 | ![](media/fast_success.gif) | ![](media/reference_success.gif) | ![](media/student_phone_failure.gif) |
 
@@ -94,25 +98,50 @@ jitter at the grasp. The teacher is just as noise-dependent and still succeeds, 
 
 The phone frames gave the same diagnosis as the LIBERO frames, in the same order and at similar values.
 
+### Fix: train on the teacher's average
+
+If the target was the problem, the student should learn the mean directly. For each frame I averaged the teacher's
+answers from its 4 starting noises and trained the same student on that average. Nothing else changed.
+
+| student, average target | noise spread, 1 step (original model) | distance to target, held-out tasks | LIBERO success |
+|---|---|---|---|
+| my phone video | 0.19 (0.20) | 0.51 → 0.39 | 22/40 (55%) |
+| LIBERO frames | 0.16 (0.15) | 0.33 → 0.31 | 22/40 (55%) |
+
+Two things came out of this:
+
+- **My phone video caught up with LIBERO's own frames.** Both students kept the original model's stability, and the phone student went
+  from 37.5% to 55%, the same score as the student trained on LIBERO's own frames. On its own this gain is not
+  significant at 40 episodes (Fisher's exact test, p = 0.18), but the 15-point gap between phone video and LIBERO
+  frames from the first recipe is gone.
+- **Distillation still hurt.** Across all four students, 80 of 160 episodes succeeded, against 30 of 40 for the
+  original 1-step model (Fisher's exact test, p = 0.005). The LIBERO-frame student barely moved offline
+  (0.33 → 0.31) and still lost 20 points. Small changes to the action expert that my offline measurements do not
+  see are enough to hurt in closed loop. I have not found out which part of the action chunk they affect.
+
 ## What worked, and what didn't
 
 Worked:
 - Measuring before optimising. The bfloat16 problem only showed up because I timed each stage.
 - The control run. Without it I would have blamed the phone video.
+- Using the diagnosis to change the target. With the average target my phone video was as useful as LIBERO's own
+  frames.
 
 Did not work:
-- Distilling onto my phone video, and distilling at all with this recipe.
+- Distillation in every form I tried: two targets, two data sources, four students, all below the original 1-step
+  model.
 - My phone data was very different from LIBERO. I filmed forks, bananas and a knife on a white
-  table, while LIBERO uses a dark bowl, a white plate and a wooden table. That probably explains
-  part of the gap between the phone student (37.5%) and the student trained on LIBERO frames
-  (52.5%). If I did this again, I'd record the actual LIBERO task with the same objects and
-  camera views.
+  table, while LIBERO uses a dark bowl, a white plate and a wooden table. With the first recipe the
+  phone student was 15 points below the student trained on LIBERO frames; with the average target the
+  gap disappeared, but neither student beat the original. If I did this again, I'd record the actual
+  LIBERO task with the same objects and camera views.
 - Distance to the teacher as an offline metric. It ranked the students above the original model; LIBERO ranked
   them below.
 - Ten-episode evaluations. They gave 10/10 for the fast setting and 2/10 for the phone student; 40 episodes gave
   75% and 37.5%. The first initial state of each task is easy. Those runs are in [`results/early`](results/early).
-- Several of my own predictions: that the model was 95% of step time (it is 57%), and that the student
-  would help when executing 10 actions at once (it got worse).
+- Several of my own predictions: that the model was 95% of step time (it is 57%), that the student
+  would help when executing 10 actions at once (it got worse), and that a student that keeps the
+  original's stability would match it (it did not).
 
 ## Why I set it up this way
 
@@ -126,7 +155,8 @@ Did not work:
 ## Limitations
 
 - I only tested LIBERO-Spatial, one GPU type, and 40 episodes per configuration. With this setup, differences smaller than about 20 points are hard to take too seriously.
-- The LIBERO student was evaluated on the same initial states it was trained on, which gives it an advantage. It still performed worse.
+- The LIBERO students were evaluated on the same initial states they were trained on, which gives them an advantage. They still performed worse.
+- The average target uses only 4 teacher samples per frame, so it is a noisy estimate of the mean.
 - For phone frames, I used the mean robot state from the dataset.
 - T4 timings vary by about 10% between Colab machines.
 
