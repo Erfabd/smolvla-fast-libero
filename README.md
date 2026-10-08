@@ -2,7 +2,7 @@
 
 SmolVLA (`HuggingFaceVLA/smolvla_libero`) on LIBERO-Spatial, Franka Panda arm, one Colab T4.
 
-I wanted to see how fast SmolVLA could run on a T4 without retraining it, and whether I could make it even faster with 1-step action prediction.
+I wanted to see how fast SmolVLA could run on a T4 without retraining it, and whether my phone videos could make the 1-step version as good as the 10-step one.
 
 On LIBERO-Spatial, I got the model from 842 ms per call down to about 17 ms per control step by switching to float16, using 1 denoising step, and re-planning every 10 steps. The fast version got 30/40 successes (75%), compared with 28/40 (70%) for the original 10-step setup.
 
@@ -81,8 +81,6 @@ With flow matching, one Euler step from noise tends to give something close to t
 
 I tested this by running each model on the same input with 6 different starting noises. The original 1-step model stayed relatively stable, while both students became much more sensitive to the noise.
 
-So the students learned something that looked more like the teacher's noisy samples, instead of the stable average action produced by the original 1-step model.
-
 | model | LIBERO frames | phone frames |
 |---|---|---|
 | original, 1 step | 0.15 | 0.20 |
@@ -104,9 +102,11 @@ Worked:
 
 Did not work:
 - Distilling onto my phone video, and distilling at all with this recipe.
-- My phone data was also very different from LIBERO. I filmed forks, bananas and a knife on a white table, while LIBERO uses a dark bowl, a white plate and a wooden table.
-
-So the phone student was learning from scenes that looked nothing like the ones it had to control. That probably explains part of the gap between the phone student (37.5%) and the student trained on LIBERO frames (52.5%).
+- My phone data was very different from LIBERO. I filmed forks, bananas and a knife on a white
+  table, while LIBERO uses a dark bowl, a white plate and a wooden table. That probably explains
+  part of the gap between the phone student (37.5%) and the student trained on LIBERO frames
+  (52.5%). If I did this again, I'd record the actual LIBERO task with the same objects and
+  camera views.
 
 If I do this again, I'd record the actual LIBERO task with the same objects and camera views.
 - Distance to the teacher as an offline metric. It ranked the students above the original model; LIBERO ranked
