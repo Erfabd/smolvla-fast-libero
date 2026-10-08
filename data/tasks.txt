@@ -1,0 +1,20 @@
+01:put the fork in the cup
+02:take out the fork from inside the cup
+03:put the cup upside down
+04:put the cup in the bowl
+05:Put the spoon on the edge of the cup
+06:Put the spoon in the bowl
+07:Put the blue cup inside the yellow one
+08:Put the orange in the cup
+09:Put the orange in the bowl
+10:Move the banana
+11:Turn the banana
+12:Turn the bowl upside down
+13:Put the banana on top of the bowl
+14:put the banana inside the cup
+15:put the knife inside the cup
+16:Put the knife on top of the bowl 
+17:put the cup in the bowl
+18:move the spoon
+19:move the knife
+20:put the fork on top of the spoon

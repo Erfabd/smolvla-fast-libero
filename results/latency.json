@@ -1,0 +1,8 @@
+{
+  "_note": "Median model time per call, measured inside the LIBERO evaluation by fast_eval.py on a Colab T4. Copied from the run logs; per-control-step time = per-call time / n_action_steps.",
+  "published_bf16_10step": {"ms_per_call": 842, "n_action_steps": 1, "source": "runs/time_base, 1 episode"},
+  "reference_10step": {"ms_per_call": 586, "n_action_steps": 1, "source": "runs/c_original_10step_x4_b"},
+  "fast_1step_chunk10": {"ms_per_call": 172, "n_action_steps": 10, "source": "runs/c_original_1step_chunk10_x4"},
+  "student_sim_1step_chunk10": {"ms_per_call": 174, "n_action_steps": 10, "source": "runs/c_student_sim_1step_chunk10_x4"},
+  "student_phone_1step_chunk10": {"ms_per_call": 173, "n_action_steps": 10, "source": "runs/c_student_phone_1step_chunk10_x4"}
+}
