@@ -92,7 +92,7 @@ Worked:
 
 Did not work:
 - Distilling onto my phone video, and distilling at all with this recipe.
-- My choice of objects. I filmed forks, bananas and knives on a white table, while every
+- I filmed forks, bananas and knife on a white table, while every
   LIBERO-Spatial task is "put the black bowl on the plate" on a wooden table. The phone
   student trained on scenes it would never see, which probably explains part of why it
   scored below the student trained on LIBERO frames (37.5% vs 52.5%). Next time I would
