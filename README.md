@@ -106,7 +106,7 @@ Did not work:
   table, while LIBERO uses a dark bowl, a white plate and a wooden table. That probably explains
   part of the gap between the phone student (37.5%) and the student trained on LIBERO frames
   (52.5%). If I did this again, I'd record the actual LIBERO task with the same objects and
-  camera views. If I do this again, I'd record the actual LIBERO task with the same objects and camera views.
+  camera views.
 - Distance to the teacher as an offline metric. It ranked the students above the original model; LIBERO ranked
   them below.
 - Ten-episode evaluations. They gave 10/10 for the fast setting and 2/10 for the phone student; 40 episodes gave
