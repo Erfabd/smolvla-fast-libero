@@ -92,6 +92,11 @@ Worked:
 
 Did not work:
 - Distilling onto my phone video, and distilling at all with this recipe.
+- My choice of objects. I filmed forks, bananas and knives on a white table, while every
+  LIBERO-Spatial task is "put the black bowl on the plate" on a wooden table. The phone
+  student trained on scenes it would never see, which probably explains part of why it
+  scored below the student trained on LIBERO frames (37.5% vs 52.5%). Next time I would
+  film the LIBERO task itself: a dark bowl, a white plate, the same camera angles.
 - Distance to the teacher as an offline metric. It ranked the students above the original model; LIBERO ranked
   them below.
 - Ten-episode evaluations. They gave 10/10 for the fast setting and 2/10 for the phone student; 40 episodes gave
